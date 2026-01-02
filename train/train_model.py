@@ -9,55 +9,32 @@ from datasets import Dataset as HuggingFaceDataset
 from torch.utils.data import Dataset
 
 
-class EncodingDecoding:
+class ByteEncodingTokenizer:
+    def __init__(self):
+        original_chars = "\n !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        new_chars = "012456789<|>[]{}()_\""
+        self.chars = original_chars + new_chars
+        self.stoi = {ch: i for i, ch in enumerate(self.chars)}
+        self.itos = {i: ch for i, ch in enumerate(self.chars)}
+        self.vocab_size = len(self.chars)
     def encode(self, text):
-        print("encoding", text)
-        return list(text.encode("utf-8"))
+        return [self.stoi.get(ch, self.stoi['\n']) for ch in text]
 
     def decode(self, indices):
-        return bytes(indices).decode("utf-8", errors="ignore")
-
-    @property
-    def vocab_size(self):
-        return 256
-
-        
-class CustomDataset(Dataset):
-    def __init__(self, encoded_data, block_size=None):
-        self.data = encoded_data
-        self.block_size = block_size
-    
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        item = self.data[idx]
-        
-        # Truncate if longer than block_size
-        if self.block_size is not None and len(item) > self.block_size:
-            item = item[:self.block_size]
-        
-        return {
-            'input_ids': item,
-            'labels': item.clone()
-        }
-
+        return ''.join([self.itos.get(i, '') for i in indices])
 def collate_fn(batch):
     """Collate function to pad sequences to the same length."""
     input_ids = [item['input_ids'] for item in batch]
     labels = [item['labels'] for item in batch]
-    
-    # Find max length in batch
+
     max_len = max(len(seq) for seq in input_ids)
     
-    # Pad sequences
     padded_input_ids = []
     padded_labels = []
     
     for inp, lab in zip(input_ids, labels):
         pad_length = max_len - len(inp)
         if pad_length > 0:
-            # Pad with 0 (or you could use a special padding token)
             padded_inp = torch.cat([inp, torch.zeros(pad_length, dtype=inp.dtype)])
             padded_lab = torch.cat([lab, torch.zeros(pad_length, dtype=lab.dtype)])
         else:
@@ -104,48 +81,66 @@ def compute_metrics(eval_pred):
 
 
 
-def split_conversations(conversation, test_size=0.1, random_state=42):
+from sklearn.model_selection import train_test_split
+from datasets import Dataset
+from datasets import Dataset as HFDataset
+def split_conversations(conversations: list, test_size: float = 0.1, random_state: int = 42):
     train_conv, test_conv = train_test_split(
-        conversation,
+        conversations,
         test_size=test_size,
         random_state=random_state
     )
     
-    train_dataset = HuggingFaceDataset.from_dict({"text": train_conv})
-    test_dataset = HuggingFaceDataset.from_dict({"text": test_conv})
+
+    train_dataset = HFDataset.from_dict({"text": train_conv})
+    test_dataset = HFDataset.from_dict({"text": test_conv})
     
     return train_dataset, test_dataset
+  
 
+import torch
+from torch.utils.data import Dataset, DataLoader
 
-def save_encoder(encoder, filepath="encoder_vocab.pt"):
-    torch.save({
-        'stoi': encoder.stoi,
-        'itos': encoder.itos
-    }, filepath)
-    print(f"Encoder vocabulary saved to {filepath}")
+class ChatDataset(Dataset):
+    def __init__(self, conversations, tokenizer, block_size):
+        self.conversations = conversations
+        self.tokenizer = tokenizer
+        self.block_size = block_size
 
+    def __len__(self):
+        return len(self.conversations)
 
-def load_encoder(filepath="encoder_vocab.pt"):
-    vocab = torch.load(filepath, map_location='cpu')
-    encoder = EncodingDecoding("")
-    
-    # Handle different file formats
-    if isinstance(vocab, dict):
-        if 'stoi' in vocab and 'itos' in vocab:
-            encoder.stoi = vocab['stoi']
-            encoder.itos = vocab['itos']
-        elif hasattr(vocab, 'stoi') and hasattr(vocab, 'itos'):
-            # If it's an encoder object that was saved directly
-            encoder.stoi = vocab.stoi
-            encoder.itos = vocab.itos
+    def __getitem__(self, idx):
+        # Safety Check: If idx is a tensor, convert to int
+        if torch.is_tensor(idx):
+            idx = idx.item()
+        
+        # Safety Check: If idx is a list (rare, but happens with some samplers), take the first
+        if isinstance(idx, list):
+             # If this happens, your DataLoader is misconfigured, 
+             # but this hack fixes the crash for single-item debugging
+            idx = idx[0]
+
+        text = self.conversations[idx]
+        
+        # Ensure text is a string
+        if not isinstance(text, str):
+            text = str(text)
+
+        encoded = self.tokenizer.encode(text)
+
+        required_len = self.block_size + 1
+        if len(encoded) > required_len:
+            encoded = encoded[:required_len]
         else:
-            raise ValueError(f"Unexpected vocabulary format in {filepath}. Expected dict with 'stoi' and 'itos' keys.")
-    elif hasattr(vocab, 'stoi') and hasattr(vocab, 'itos'):
-        # If the encoder object itself was saved
-        encoder.stoi = vocab.stoi
-        encoder.itos = vocab.itos
-    else:
-        raise ValueError(f"Unexpected vocabulary format in {filepath}. Expected dict or EncodingDecoding object.")
-    
-    return encoder
+            pad_len = required_len - len(encoded)
+            encoded = encoded + [0] * pad_len 
+
+        data = torch.tensor(encoded, dtype=torch.long)
+        x = data[:-1]
+        y = data[1:]
+        
+        return x, y
+
+
 

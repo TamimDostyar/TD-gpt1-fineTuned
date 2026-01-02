@@ -93,7 +93,7 @@ def estimate_loss(eval_iters=200):
     return out
 
 print(f"\nInitializing model...")
-model = BigramLanguageModel(
+model = GPTModelStyle(
     vocab_size=vocab_size,
     n_embed=n_embed,
     block_size=block_size,
