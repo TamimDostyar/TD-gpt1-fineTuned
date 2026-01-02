@@ -1,15 +1,18 @@
 import torch
 import torch.nn.functional as F
 import json
-from model import BigramLanguageModel
-from train_model import load_encoder, EncodingDecoding
-
+from models.GPTModel import *
+from train.train_model import load_encoder, EncodingDecoding
+import os
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+dataFile = os.path.join(os.path.abspath("json"), "reddit_chat.jsonl")
 
 try:
     data_encoder = load_encoder("encoder_vocab.pt")
 except (KeyError, ValueError, FileNotFoundError):
-    with open("reddit_chat.jsonl", 'r') as f:
+    with open(dataFile, 'r') as f:
         conversations = [
             "\n".join(
                 f"{'Human' if msg['role']=='user' else 'Assistant'}: {msg['content']}" 
@@ -22,7 +25,7 @@ except (KeyError, ValueError, FileNotFoundError):
 
 vocab_size = len(data_encoder.stoi)
 
-model = BigramLanguageModel(
+model = GPTModelStyle(
     vocab_size=vocab_size,
     n_embed=384,
     block_size=256,
@@ -60,7 +63,7 @@ def generate(model, context, max_tokens=100, temperature=0.5, top_k=50, rep_pena
     return generated
 
 if __name__ == "__main__":
-    question = input("Your Text: ")
+    question = input("You: ")
     while question.lower() != "q":
         prompt = f"Human: {question}\nAssistant:"
         context = torch.tensor([data_encoder.encode(prompt)], dtype=torch.long, device=device)
@@ -69,14 +72,14 @@ if __name__ == "__main__":
             output = generate(model, context)
 
         full_text = data_encoder.decode(output[0].tolist())
+
         if "Assistant:" in full_text:
             assistant_response = full_text.split("Assistant:", 1)[1]
             if "\nHuman:" in assistant_response:
                 assistant_response = assistant_response.split("\nHuman:")[0]
             assistant_response = assistant_response.strip()
-            print(f"Q: {question}")
-            print(f"A: {assistant_response}")
+            print(f"AI: {assistant_response}")
         else:
             print("No assistant response generated.")
 
-        question = input("Your Text: ")
+        question = input("You: ")
