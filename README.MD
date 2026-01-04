@@ -17,8 +17,10 @@ Before you can run the testGPT.py, you will need to install Torch; therefore, be
 
         1 - pip install torch
 Once completed, try:
+
         1 - python testGPT.py
 Then you should see:
+
         You: YOUR MESSAGE
         AI: AI MESSAGE
 
