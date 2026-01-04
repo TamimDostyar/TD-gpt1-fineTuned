@@ -1,7 +1,12 @@
 Sample Answer:
 
-        `Q: AI takes the world`
-        `A: Hey I'm doing that was looked for but I'm an acried.`
+        You: Hey!
+        AI: How's your day going?
+        You: good. How about you?
+        AI: I'm good! I've been what am I?
+        You: Yes, you have.
+        AI: Yes! I have no idea. I like them all those.
+
 
 Please note: This model was trained on unfiltered data and may produce sensitive content. The main purpose of creating this model was to improve my understanding of fine-tuning and transformers for building AI systems like GPT.
 
